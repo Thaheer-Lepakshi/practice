@@ -1,0 +1,29 @@
+name: cicd pipeline
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "environment to deploy to"
+        required: false
+        type: choice
+        options: 
+            - dev
+            - prod
+            - test
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Test
+              run: |
+                actor="${{ github.actor }}"
+                actor="${actor//-/ }"
+                echo "hello ${actor,,}"
+                environment="${{ github.event.inputs.environment || 'dev' }}"
+                echo "deploying to ${environment}"
