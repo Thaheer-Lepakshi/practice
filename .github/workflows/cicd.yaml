@@ -17,8 +17,13 @@ on:
             - prod
             - test
 jobs:
-    test:
+    dev:
         runs-on: ubuntu-latest
+        if: | 
+          github.event_name == 'workflow_dispatch' && github.ref_name == 'develop' && inputs.environment == 'dev' ||
+          (github.ref == 'refs/heads/develop' && github.event_name == 'pull_request') ||
+          (github.ref == 'refs/heads/develop' && github.event_name == 'push')
+         
         steps:
             - name: Test
               run: |
@@ -26,4 +31,20 @@ jobs:
                 actor="${actor//-/ }"
                 echo "hello ${actor,,}"
                 environment="${{ github.event.inputs.environment || 'dev' }}"
+                echo "deploying to ${environment}"
+
+    test:
+        runs-on: ubuntu-latest
+        if: | 
+          github.event_name == 'workflow_dispatch' && github.ref_name == 'test' && inputs.environment == 'test' ||
+          (github.ref == 'refs/heads/test' && github.event_name == 'pull_request') ||
+          (github.ref == 'refs/heads/test' && github.event_name == 'push')
+         
+        steps:
+            - name: Test
+              run: |
+                actor="${{ github.actor }}"
+                actor="${actor//-/ }"
+                echo "hello ${actor,,}"
+                environment="${{ github.event.inputs.environment || 'test' }}"
                 echo "deploying to ${environment}"
