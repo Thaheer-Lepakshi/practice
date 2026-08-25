@@ -1,0 +1,94 @@
+name: Cuts a dated release branch and raises promotion PRs
+
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      base-branch:
+        description: Branch the release branch is cut from, and the final PR target.
+        required: false
+        type: string
+        default: main
+      source-branch:
+        description: Branch containing the changes to promote into the release branch.
+        required: false
+        type: string
+        default: sandbox
+      release-branch:
+        description: Name of the release branch to create. Defaults to release-<day>-<month> of the run date.
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  create-release-branch:
+    name: Create release branch from ${{ inputs.base-branch }}
+    runs-on: ubuntu-latest
+    outputs:
+      release-branch: ${{ steps.branch-name.outputs.name }}
+    steps:
+      - name: Checkout ${{ inputs.base-branch }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.base-branch }}
+          fetch-depth: 0
+
+      - name: Compute release branch name
+        id: branch-name
+        run: |
+          name="${{ inputs.release-branch }}"
+          if [ -z "$name" ]; then
+            name="release-$(date +%d-%m)"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push release branch
+        run: |
+          branch="${{ steps.branch-name.outputs.name }}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch already exists on origin, skipping creation."
+          else
+            git checkout -b "$branch"
+            git push origin "$branch"
+          fi
+
+  promote-sandbox-to-release:
+    name: Raise PR ${{ inputs.source-branch }} -> release branch
+    needs: create-release-branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Open PR
+        env:
+          RELEASE_BRANCH: ${{ needs.create-release-branch.outputs.release-branch }}
+        run: |
+          gh pr create \
+            --base "$RELEASE_BRANCH" \
+            --head "${{ inputs.source-branch }}" \
+            --title "Promote ${{ inputs.source-branch }} into $RELEASE_BRANCH" \
+            --body "Automated promotion of ${{ inputs.source-branch }} into $RELEASE_BRANCH." \
+          || echo "PR already exists or there is nothing to promote."
+
+  promote-release-to-main:
+    name: Raise PR release branch -> ${{ inputs.base-branch }}
+    needs: [create-release-branch, promote-sandbox-to-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Open PR
+        env:
+          RELEASE_BRANCH: ${{ needs.create-release-branch.outputs.release-branch }}
+        run: |
+          gh pr create \
+            --base "${{ inputs.base-branch }}" \
+            --head "$RELEASE_BRANCH" \
+            --title "Release $RELEASE_BRANCH to ${{ inputs.base-branch }}" \
+            --body "Automated release PR from $RELEASE_BRANCH into ${{ inputs.base-branch }}." \
+          || echo "PR already exists."
